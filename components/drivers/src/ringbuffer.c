@@ -1,21 +1,7 @@
 /*
- * File      : ringbuffer.c
- * This file is part of RT-Thread RTOS
- * COPYRIGHT (C) 2012, RT-Thread Development Team
+ * Copyright (c) 2006-2018, RT-Thread Development Team
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Change Logs:
  * Date           Author       Notes
@@ -208,6 +194,40 @@ rt_size_t rt_ringbuffer_get(struct rt_ringbuffer *rb,
 RTM_EXPORT(rt_ringbuffer_get);
 
 /**
+ *  peak data from ring buffer
+ */
+rt_size_t rt_ringbuffer_peak(struct rt_ringbuffer *rb, rt_uint8_t **ptr)
+{
+    RT_ASSERT(rb != RT_NULL);
+
+    *ptr = RT_NULL;
+
+    /* whether has enough data  */
+    rt_size_t size = rt_ringbuffer_data_len(rb);
+
+    /* no data */
+    if (size == 0)
+        return 0;
+
+    *ptr = &rb->buffer_ptr[rb->read_index];
+
+    if(rb->buffer_size - rb->read_index > size)
+    {
+        rb->read_index += size;
+        return size;
+    }
+
+    size = rb->buffer_size - rb->read_index;
+
+    /* we are going into the other side of the mirror */
+    rb->read_mirror = ~rb->read_mirror;
+    rb->read_index = 0;
+
+    return size;
+}
+RTM_EXPORT(rt_ringbuffer_peak);
+
+/**
  * put a character into ring buffer
  */
 rt_size_t rt_ringbuffer_putchar(struct rt_ringbuffer *rb, const rt_uint8_t ch)
@@ -346,14 +366,15 @@ struct rt_ringbuffer* rt_ringbuffer_create(rt_uint16_t size)
 
     size = RT_ALIGN_DOWN(size, RT_ALIGN_SIZE);
 
-    rb = rt_malloc(sizeof(struct rt_ringbuffer));
+    rb = (struct rt_ringbuffer *)rt_malloc(sizeof(struct rt_ringbuffer));
     if (rb == RT_NULL)
         goto exit;
 
-    pool = rt_malloc(size);
+    pool = (rt_uint8_t *)rt_malloc(size);
     if (pool == RT_NULL)
     {
         rt_free(rb);
+        rb = RT_NULL;
         goto exit;
     }
     rt_ringbuffer_init(rb, pool, size);

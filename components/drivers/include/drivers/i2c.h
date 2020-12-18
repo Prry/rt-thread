@@ -1,21 +1,7 @@
 /*
- * File      : i2c.h
- * This file is part of RT-Thread RTOS
- * COPYRIGHT (C) 2006 - 2012, RT-Thread Development Team
+ * Copyright (c) 2006-2018, RT-Thread Development Team
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Change Logs:
  * Date           Author        Notes
@@ -37,6 +23,7 @@ extern "C" {
 #define RT_I2C_NO_START         (1u << 4)
 #define RT_I2C_IGNORE_NACK      (1u << 5)
 #define RT_I2C_NO_READ_ACK      (1u << 6)  /* when I2C reading, we do not ACK */
+#define RT_I2C_NO_STOP          (1u << 7)
 
 struct rt_i2c_msg
 {
@@ -74,11 +61,12 @@ struct rt_i2c_bus_device
     void *priv;
 };
 
-#ifdef RT_I2C_DEBUG
-#define i2c_dbg(fmt, ...)   rt_kprintf(fmt, ##__VA_ARGS__)
-#else
-#define i2c_dbg(fmt, ...)
-#endif
+struct rt_i2c_client
+{
+    struct rt_device               parent;
+    struct rt_i2c_bus_device       *bus;
+    rt_uint16_t                    client_addr;
+};
 
 rt_err_t rt_i2c_bus_device_register(struct rt_i2c_bus_device *bus,
                                     const char               *bus_name);
@@ -96,6 +84,17 @@ rt_size_t rt_i2c_master_recv(struct rt_i2c_bus_device *bus,
                              rt_uint16_t               flags,
                              rt_uint8_t               *buf,
                              rt_uint32_t               count);
+
+rt_inline rt_err_t rt_i2c_bus_lock(struct rt_i2c_bus_device *bus, rt_tick_t timeout)
+{
+    return rt_mutex_take(&bus->lock, timeout);
+}
+
+rt_inline rt_err_t rt_i2c_bus_unlock(struct rt_i2c_bus_device *bus)
+{
+    return rt_mutex_release(&bus->lock);
+}
+
 int rt_i2c_core_init(void);
 
 #ifdef __cplusplus

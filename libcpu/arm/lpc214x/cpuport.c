@@ -1,11 +1,7 @@
 /*
- * File      : cpuport.c
- * This file is part of RT-Thread RTOS
- * COPYRIGHT (C) 2009 - 2011, RT-Thread Development Team
+ * Copyright (c) 2006-2018, RT-Thread Development Team
  *
- * The license and distribution terms for this file may be
- * found in the file LICENSE in this distribution or at
- * http://www.rt-thread.org/license/LICENSE
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Change Logs:
  * Date           Author       Notes
@@ -141,7 +137,7 @@ void rt_hw_interrupt_umask(int vector)
  * @return old handler
  */
 rt_isr_handler_t rt_hw_interrupt_install(int vector, rt_isr_handler_t handler,
-                                         void *param, char *name)
+                                         void *param, const char *name)
 {
     rt_isr_handler_t old_handler = RT_NULL;
 
@@ -167,7 +163,7 @@ rt_isr_handler_t rt_hw_interrupt_install(int vector, rt_isr_handler_t handler,
  * this function will reset CPU
  *
  */
-void rt_hw_cpu_reset(void)
+RT_WEAK void rt_hw_cpu_reset(void)
 {
 }
 
@@ -175,7 +171,7 @@ void rt_hw_cpu_reset(void)
  * this function will shutdown CPU
  *
  */
-void rt_hw_cpu_shutdown()
+RT_WEAK void rt_hw_cpu_shutdown()
 {
 	rt_kprintf("shutdown...\n");
 

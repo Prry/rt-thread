@@ -42,21 +42,15 @@ In every header file, there should be copyright information and Change Log
 record like this:
 
     /*
-     * File      : rtthread.h
-     * This file is part of RT-Thread RTOS
-     * COPYRIGHT (C) 2006, RT-Thread Development Team
-     *
-     * The license and distribution terms for this file may be
-     * found in the file LICENSE in this distribution or at
-     * http://www.rt-thread.org/license/LICENSE.
-     *
-     * Change Logs:
-     * Date           Author       Notes
-     * 2006-03-18     Bernard      the first version
-     * 2006-04-26     Bernard      add semaphore APIs
-     * ...
+    * Copyright (c) 2006-2020, RT-Thread Development Team
+    *
+    * SPDX-License-Identifier: Apache-2.0
+    *
+    * Change Logs:
+    * Date           Author       Notes
+    * 2006-03-18     Bernard      the first version
+    * 2006-04-26     Bernard      add semaphore APIs
     */
-
 
 5. Structure Defines
 
@@ -83,9 +77,9 @@ example:
     typedef struct rt_timer* rt_timer_t;
 
 
-6. Micros
+6. Macros
 
-In RT-Thread, please use upper-case names for micro definitions. Words are
+In RT-Thread, please use upper-case names for macro definitions. Words are
 connected by "_". Like:
 
     #define RT_TRUE                         1
@@ -178,7 +172,7 @@ It is not recommended to use rt_kprintf frequently. Unless you are aware of that
 it's not a big deal to run slower.
 
 Logging should be off by default and can be turned on by a switch(e.g. a
-variable or a micro). When logging, it should be easy to understand and easy to
+variable or a macro). When logging, it should be easy to understand and easy to
 determine where the problem is.
 
 

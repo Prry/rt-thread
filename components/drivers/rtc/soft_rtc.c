@@ -1,21 +1,7 @@
 /*
- * File      : soft_rtc.c
- * This file is part of RT-Thread RTOS
- * COPYRIGHT (C) 2006 - 2018, RT-Thread Development Team
+ * Copyright (c) 2006-2018, RT-Thread Development Team
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Change Logs:
  * Date           Author       Notes
@@ -25,8 +11,7 @@
 #include <time.h>
 #include <string.h>
 #include <rtthread.h>
-
-#include <drivers/rtc.h>
+#include <rtdevice.h>
 
 #ifdef RT_USING_SOFT_RTC
 
@@ -42,9 +27,37 @@ static struct rt_device soft_rtc_dev;
 static rt_tick_t init_tick;
 static time_t init_time;
 
+#ifdef RT_USING_ALARM
+
+static struct rt_rtc_wkalarm wkalarm;
+static struct rt_timer alarm_time;
+
+static void alarm_timeout(void *param)
+{
+    rt_alarm_update(param, 1);
+}
+
+static void soft_rtc_alarm_update(struct rt_rtc_wkalarm *palarm)
+{
+    rt_tick_t next_tick;
+
+    if (palarm->enable)
+    {
+        next_tick = RT_TICK_PER_SECOND;
+        rt_timer_control(&alarm_time, RT_TIMER_CTRL_SET_TIME, &next_tick);
+        rt_timer_start(&alarm_time);
+    }
+    else
+    {
+        rt_timer_stop(&alarm_time);
+    }
+}
+
+#endif
+
 static rt_err_t soft_rtc_control(rt_device_t dev, int cmd, void *args)
 {
-    time_t *time;
+    time_t *t;
     struct tm time_temp;
 
     RT_ASSERT(dev != RT_NULL);
@@ -53,20 +66,43 @@ static rt_err_t soft_rtc_control(rt_device_t dev, int cmd, void *args)
     switch (cmd)
     {
     case RT_DEVICE_CTRL_RTC_GET_TIME:
-        time = (time_t *) args;
-        *time = init_time + (rt_tick_get() - init_tick) / RT_TICK_PER_SECOND;
+        t = (time_t *) args;
+        *t = init_time + (rt_tick_get() - init_tick) / RT_TICK_PER_SECOND;
         break;
-
     case RT_DEVICE_CTRL_RTC_SET_TIME:
     {
-        time = (time_t *) args;
-        init_time = *time - (rt_tick_get() - init_tick) / RT_TICK_PER_SECOND;
+        t = (time_t *) args;
+        init_time = *t - (rt_tick_get() - init_tick) / RT_TICK_PER_SECOND;
+#ifdef RT_USING_ALARM
+        soft_rtc_alarm_update(&wkalarm);
+#endif
         break;
     }
+#ifdef RT_USING_ALARM
+    case RT_DEVICE_CTRL_RTC_GET_ALARM:
+        *((struct rt_rtc_wkalarm *)args) = wkalarm;
+        break;
+    case RT_DEVICE_CTRL_RTC_SET_ALARM:
+        wkalarm = *((struct rt_rtc_wkalarm *)args);
+        soft_rtc_alarm_update(&wkalarm);
+        break;
+#endif
     }
 
     return RT_EOK;
 }
+
+#ifdef RT_USING_DEVICE_OPS
+const static struct rt_device_ops soft_rtc_ops = 
+{
+    RT_NULL,
+    RT_NULL,
+    RT_NULL,
+    RT_NULL,
+    RT_NULL,
+    soft_rtc_control
+};
+#endif
 
 int rt_soft_rtc_init(void)
 {
@@ -80,18 +116,31 @@ int rt_soft_rtc_init(void)
     /* make sure only one 'rtc' device */
     RT_ASSERT(!rt_device_find("rtc"));
 
+#ifdef RT_USING_ALARM
+    rt_timer_init(&alarm_time,
+                  "alarm",
+                  alarm_timeout,
+                  &soft_rtc_dev,
+                  0,
+                  RT_TIMER_FLAG_SOFT_TIMER|RT_TIMER_FLAG_ONE_SHOT);
+#endif
+
     init_tick = rt_tick_get();
     init_time = mktime(&time_new);
 
     soft_rtc_dev.type    = RT_Device_Class_RTC;
 
     /* register rtc device */
+#ifdef RT_USING_DEVICE_OPS
+    soft_rtc_dev.ops     = &soft_rtc_ops;
+#else
     soft_rtc_dev.init    = RT_NULL;
     soft_rtc_dev.open    = RT_NULL;
     soft_rtc_dev.close   = RT_NULL;
     soft_rtc_dev.read    = RT_NULL;
     soft_rtc_dev.write   = RT_NULL;
     soft_rtc_dev.control = soft_rtc_control;
+#endif
 
     /* no private */
     soft_rtc_dev.user_data = RT_NULL;

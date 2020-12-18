@@ -1,21 +1,7 @@
 /*
- * File      : dataqueue.c
- * This file is part of RT-Thread RTOS
- * COPYRIGHT (C) 2012, RT-Thread Development Team
+ * Copyright (c) 2006-2018, RT-Thread Development Team
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Change Logs:
  * Date           Author       Notes
@@ -26,6 +12,8 @@
 #include <rtthread.h>
 #include <rtdevice.h>
 #include <rthw.h>
+
+#define DATAQUEUE_MAGIC  0xbead0e0e
 
 struct rt_data_item
 {
@@ -40,14 +28,18 @@ rt_data_queue_init(struct rt_data_queue *queue,
                    void (*evt_notify)(struct rt_data_queue *queue, rt_uint32_t event))
 {
     RT_ASSERT(queue != RT_NULL);
+    RT_ASSERT(size > 0);
 
     queue->evt_notify = evt_notify;
 
+    queue->magic = DATAQUEUE_MAGIC;
     queue->size = size;
     queue->lwm = lwm;
 
     queue->get_index = 0;
     queue->put_index = 0;
+    queue->is_empty = 1;
+    queue->is_full = 0;
 
     rt_list_init(&(queue->suspended_push_list));
     rt_list_init(&(queue->suspended_pop_list));
@@ -72,12 +64,13 @@ rt_err_t rt_data_queue_push(struct rt_data_queue *queue,
     rt_err_t    result;
     
     RT_ASSERT(queue != RT_NULL);
+    RT_ASSERT(queue->magic == DATAQUEUE_MAGIC);
 
     result = RT_EOK;
     thread = rt_thread_self();
 
     level = rt_hw_interrupt_disable();
-    while (queue->put_index - queue->get_index == queue->size)
+    while (queue->is_full)
     {
         /* queue is full */
         if (timeout == 0)
@@ -118,9 +111,18 @@ rt_err_t rt_data_queue_push(struct rt_data_queue *queue,
         if (result != RT_EOK) goto __exit;
     }
 
-    queue->queue[queue->put_index % queue->size].data_ptr  = data_ptr;
-    queue->queue[queue->put_index % queue->size].data_size = data_size;
+    queue->queue[queue->put_index].data_ptr  = data_ptr;
+    queue->queue[queue->put_index].data_size = data_size;
     queue->put_index += 1;
+    if (queue->put_index == queue->size)
+    {
+        queue->put_index = 0;
+    }
+    queue->is_empty = 0;
+    if (queue->put_index == queue->get_index)
+    {
+        queue->is_full = 1;
+    }
 
     /* there is at least one thread in suspended list */
     if (!rt_list_isempty(&(queue->suspended_pop_list)))
@@ -159,8 +161,9 @@ rt_err_t rt_data_queue_pop(struct rt_data_queue *queue,
     rt_ubase_t  level;
     rt_thread_t thread;
     rt_err_t    result;
-
+    
     RT_ASSERT(queue != RT_NULL);
+    RT_ASSERT(queue->magic == DATAQUEUE_MAGIC);
     RT_ASSERT(data_ptr != RT_NULL);
     RT_ASSERT(size != RT_NULL);
 
@@ -168,7 +171,7 @@ rt_err_t rt_data_queue_pop(struct rt_data_queue *queue,
     thread = rt_thread_self();
 
     level = rt_hw_interrupt_disable();
-    while (queue->get_index == queue->put_index)
+    while (queue->is_empty)
     {
         /* queue is empty */
         if (timeout == 0)
@@ -209,12 +212,20 @@ rt_err_t rt_data_queue_pop(struct rt_data_queue *queue,
             goto __exit;
     }
 
-    *data_ptr = queue->queue[queue->get_index % queue->size].data_ptr;
-    *size     = queue->queue[queue->get_index % queue->size].data_size;
-
+    *data_ptr = queue->queue[queue->get_index].data_ptr;
+    *size     = queue->queue[queue->get_index].data_size;
     queue->get_index += 1;
+    if (queue->get_index == queue->size)
+    {
+        queue->get_index = 0;
+    }
+    queue->is_full = 0;
+    if (queue->put_index == queue->get_index)
+    {
+        queue->is_empty = 1;
+    }
 
-    if ((queue->put_index - queue->get_index) <= queue->lwm)
+    if (rt_data_queue_len(queue) <= queue->lwm)
     {
         /* there is at least one thread in suspended list */
         if (!rt_list_isempty(&(queue->suspended_push_list)))
@@ -258,20 +269,19 @@ rt_err_t rt_data_queue_peak(struct rt_data_queue *queue,
                             rt_size_t *size)
 {
     rt_ubase_t  level;
-
+    
     RT_ASSERT(queue != RT_NULL);
+    RT_ASSERT(queue->magic == DATAQUEUE_MAGIC);
 
-    level = rt_hw_interrupt_disable();
-
-    if (queue->get_index == queue->put_index) 
+    if (queue->is_empty) 
     {
-        rt_hw_interrupt_enable(level);
-        
         return -RT_EEMPTY;
     }
 
-    *data_ptr = queue->queue[queue->get_index % queue->size].data_ptr;
-    *size     = queue->queue[queue->get_index % queue->size].data_size;
+    level = rt_hw_interrupt_disable();
+
+    *data_ptr = queue->queue[queue->get_index].data_ptr;
+    *size     = queue->queue[queue->get_index].data_size;
 
     rt_hw_interrupt_enable(level);
 
@@ -281,9 +291,21 @@ RTM_EXPORT(rt_data_queue_peak);
 
 void rt_data_queue_reset(struct rt_data_queue *queue)
 {
+    rt_ubase_t  level;
     struct rt_thread *thread;
-    register rt_ubase_t temp;
+    
+    RT_ASSERT(queue != RT_NULL);
+    RT_ASSERT(queue->magic == DATAQUEUE_MAGIC);
 
+    level = rt_hw_interrupt_disable();
+
+    queue->get_index = 0;
+    queue->put_index = 0;
+    queue->is_empty = 1;
+    queue->is_full = 0;
+    
+    rt_hw_interrupt_enable(level);
+    
     rt_enter_critical();
     /* wakeup all suspend threads */
 
@@ -291,7 +313,7 @@ void rt_data_queue_reset(struct rt_data_queue *queue)
     while (!rt_list_isempty(&(queue->suspended_pop_list)))
     {
         /* disable interrupt */
-        temp = rt_hw_interrupt_disable();
+        level = rt_hw_interrupt_disable();
 
         /* get next suspend thread */
         thread = rt_list_entry(queue->suspended_pop_list.next,
@@ -308,14 +330,14 @@ void rt_data_queue_reset(struct rt_data_queue *queue)
         rt_thread_resume(thread);
 
         /* enable interrupt */
-        rt_hw_interrupt_enable(temp);
+        rt_hw_interrupt_enable(level);
     }
 
     /* resume on push list */
     while (!rt_list_isempty(&(queue->suspended_push_list)))
     {
         /* disable interrupt */
-        temp = rt_hw_interrupt_disable();
+        level = rt_hw_interrupt_disable();
 
         /* get next suspend thread */
         thread = rt_list_entry(queue->suspended_push_list.next,
@@ -332,10 +354,61 @@ void rt_data_queue_reset(struct rt_data_queue *queue)
         rt_thread_resume(thread);
 
         /* enable interrupt */
-        rt_hw_interrupt_enable(temp);
+        rt_hw_interrupt_enable(level);
     }
     rt_exit_critical();
 
     rt_schedule();
 }
 RTM_EXPORT(rt_data_queue_reset);
+
+rt_err_t rt_data_queue_deinit(struct rt_data_queue *queue)
+{
+    rt_ubase_t level;
+
+    RT_ASSERT(queue != RT_NULL);
+    RT_ASSERT(queue->magic == DATAQUEUE_MAGIC);
+
+    /* wakeup all suspend threads */
+    rt_data_queue_reset(queue);
+
+    level = rt_hw_interrupt_disable();
+    queue->magic = 0;
+    rt_hw_interrupt_enable(level);
+    
+    rt_free(queue->queue);
+
+    return RT_EOK;
+}
+RTM_EXPORT(rt_data_queue_deinit);
+
+rt_uint16_t rt_data_queue_len(struct rt_data_queue *queue)
+{
+    rt_ubase_t level;
+    rt_int16_t len;
+    
+    RT_ASSERT(queue != RT_NULL);
+    RT_ASSERT(queue->magic == DATAQUEUE_MAGIC);
+
+    if (queue->is_empty)
+    {
+        return 0;
+    }
+
+    level = rt_hw_interrupt_disable();
+
+    if (queue->put_index > queue->get_index)
+    {
+        len = queue->put_index - queue->get_index;
+    }
+    else
+    {
+        len = queue->size + queue->put_index - queue->get_index;
+    }
+    
+    rt_hw_interrupt_enable(level);
+
+    return len;
+}
+RTM_EXPORT(rt_data_queue_len);
+

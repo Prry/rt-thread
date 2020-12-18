@@ -1,21 +1,7 @@
 /*
- * File      : usb_common.h
- * This file is part of RT-Thread RTOS
- * COPYRIGHT (C) 2012, RT-Thread Development Team
+ * Copyright (c) 2006-2018, RT-Thread Development Team
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Change Logs:
  * Date           Author       Notes
@@ -222,25 +208,25 @@ extern "C" {
 #define USB_EP_DESC_NUM(addr)           (addr & USB_EP_DESC_NUM_MASK)
 #define USB_EP_DIR(addr)                ((addr & USB_DIR_MASK)>>7)
 
-#ifdef RT_USB_DEVICE_HID
-    #ifdef RT_USB_DEVICE_HID_KEYBOARD
-        #define HID_REPORT_ID_KEYBOARD1         1
-        #if RT_USB_DEVICE_HID_KEYBOARD_NUMBER>1
-            #define HID_REPORT_ID_KEYBOARD2     2
-            #if RT_USB_DEVICE_HID_KEYBOARD_NUMBER>2
-                #define HID_REPORT_ID_KEYBOARD3 3
-            #endif
-        #endif
-    #endif
-    #ifdef RT_USB_DEVICE_HID_MEDIA
-        #define HID_REPORT_ID_MEDIA             4
-    #endif
-    #ifdef RT_USB_DEVICE_HID_GENERAL
-        #define HID_REPORT_ID_GENERAL           5
-    #endif
-    #ifdef RT_USB_DEVICE_HID_MOUSE
-        #define HID_REPORT_ID_MOUSE             6
-    #endif
+#define HID_REPORT_ID_KEYBOARD1         1
+#define HID_REPORT_ID_KEYBOARD2         2
+#define HID_REPORT_ID_KEYBOARD3         3
+#define HID_REPORT_ID_KEYBOARD4         7
+#define HID_REPORT_ID_MEDIA             4
+#define HID_REPORT_ID_GENERAL           5
+#define HID_REPORT_ID_MOUSE             6
+
+/*
+ * Time of usb timeout
+ */
+#ifndef USB_TIMEOUT_BASIC
+#define USB_TIMEOUT_BASIC               (RT_TICK_PER_SECOND)        /* 1s */
+#endif
+#ifndef USB_TIMEOUT_LONG
+#define USB_TIMEOUT_LONG                (RT_TICK_PER_SECOND * 5)    /* 5s */
+#endif
+#ifndef USB_DEBOUNCE_TIME
+#define USB_DEBOUNCE_TIME               (RT_TICK_PER_SECOND / 5)    /* 0.2s */
 #endif
 
 #define uswap_32(x) \
@@ -449,15 +435,15 @@ typedef struct usb_os_proerty * usb_os_proerty_t;
 //  5	    A big-endian 32-bit integer (REG_DWORD_BIG_ENDIAN)
 //  6	    A NULL-terminated Unicode string that contains a symbolic link (REG_LINK)
 //  7	    Multiple NULL-terminated Unicode strings (REG_MULTI_SZ)
-#define USB_OS_PROERTY_TYPE_REG_SZ                      0x01UL
-#define USB_OS_PROERTY_TYPE_REG_EXPAND_SZ               0x02UL
-#define USB_OS_PROERTY_TYPE_REG_BINARY                  0x03UL
-#define USB_OS_PROERTY_TYPE_REG_DWORD_LITTLE_ENDIAN     0x04UL
-#define USB_OS_PROERTY_TYPE_REG_DWORD_BIG_ENDIAN        0x05UL
-#define USB_OS_PROERTY_TYPE_REG_LINK                    0x06UL
-#define USB_OS_PROERTY_TYPE_REG_MULTI_SZ                0x07UL
+#define USB_OS_PROPERTY_TYPE_REG_SZ                      0x01UL
+#define USB_OS_PROPERTY_TYPE_REG_EXPAND_SZ               0x02UL
+#define USB_OS_PROPERTY_TYPE_REG_BINARY                  0x03UL
+#define USB_OS_PROPERTY_TYPE_REG_DWORD_LITTLE_ENDIAN     0x04UL
+#define USB_OS_PROPERTY_TYPE_REG_DWORD_BIG_ENDIAN        0x05UL
+#define USB_OS_PROPERTY_TYPE_REG_LINK                    0x06UL
+#define USB_OS_PROPERTY_TYPE_REG_MULTI_SZ                0x07UL
 
-#define USB_OS_PROERTY_DESC(PropertyDataType,PropertyName,PropertyData) \
+#define USB_OS_PROPERTY_DESC(PropertyDataType,PropertyName,PropertyData) \
 {\
     .dwSize                 = sizeof(struct usb_os_proerty)-sizeof(const char *)*2\
                             +sizeof(PropertyName)*2+sizeof(PropertyData)*2,\
@@ -473,7 +459,6 @@ typedef struct usb_os_proerty * usb_os_proerty_t;
 #define  HID_SUB_DESCRIPTOR_MAX        1
 #endif
 
-#ifdef RT_USB_DEVICE_HID
 struct uhid_descriptor
 {
     rt_uint8_t  bLength;
@@ -497,7 +482,7 @@ struct hid_report
 };
 typedef struct hid_report* hid_report_t;
 extern void HID_Report_Received(hid_report_t report);
-#endif
+
 struct urequest
 {
     rt_uint8_t  request_type;

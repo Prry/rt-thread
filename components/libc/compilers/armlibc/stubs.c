@@ -1,23 +1,7 @@
 /*
- * File     : stubs.c
- * Brief    : reimplement some basic functions of arm standard c library
+ * Copyright (c) 2006-2018, RT-Thread Development Team
  *
- * This file is part of RT-Thread RTOS
- * COPYRIGHT (C) 2006 - 2017, RT-Thread Development Team
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Change Logs:
  * Date           Author       Notes
@@ -25,6 +9,8 @@
  * 2013-11-24     aozima       fixed _sys_read()/_sys_write() issues.
  * 2014-08-03     bernard      If using msh, use system() implementation
  *                             in msh.
+ * 2020-08-05     Meco Man     fixed _sys_flen() compiling-warning when 
+ *                             RT_USING_DFS is not defined
  */
 
 #include <string.h>
@@ -37,7 +23,11 @@
 #include "dfs_posix.h"
 #endif
 
+#ifdef __CLANG_ARM
+__asm(".global __use_no_semihosting\n\t");
+#else
 #pragma import(__use_no_semihosting_swi)
+#endif
 
 /* Standard IO device handles. */
 #define STDIN       0
@@ -189,7 +179,7 @@ int _sys_write(FILEHANDLE fh, const unsigned char *buf, unsigned len, int mode)
 
     if ((fh == STDOUT) || (fh == STDERR))
     {
-#ifndef RT_USING_CONSOLE
+#if !defined(RT_USING_CONSOLE) || !defined(RT_USING_DEVICE)
         return 0;
 #else
 #ifdef RT_USING_POSIX
@@ -249,7 +239,7 @@ int _sys_tmpnam(char *name, int fileno, unsigned maxlength)
 char *_sys_command_string(char *cmd, int len)
 {
     /* no support */
-    return cmd;
+    return RT_NULL;
 }
 
 /* This function writes a character to the console. */
@@ -263,7 +253,7 @@ void _ttywrch(int ch)
 #endif
 }
 
-void _sys_exit(int return_code)
+RT_WEAK void _sys_exit(int return_code)
 {
     /* TODO: perhaps exit the thread which is invoking this function */
     while (1);
@@ -277,12 +267,25 @@ void _sys_exit(int return_code)
  */
 long _sys_flen(FILEHANDLE fh)
 {
+#ifdef RT_USING_DFS
+    struct stat stat;
+
+    if (fh < STDERR)
+        return -1;
+
+    fstat(fh, &stat);
+    return stat.st_size;
+#else
     return -1;
+#endif
 }
 
 int _sys_istty(FILEHANDLE fh)
 {
-    return 0;
+    if((STDIN <= fh) && (fh <= STDERR))
+        return 1;
+    else
+        return 0;
 }
 
 int remove(const char *filename)
@@ -309,30 +312,22 @@ int system(const char *string)
 
 int fputc(int c, FILE *f) 
 {
-    char ch = c;
+    char ch[2] = {0};
 
-    rt_kprintf(&ch);
+    ch[0] = c;
+    rt_kprintf(&ch[0]);
     return 1;
 }
 
 int fgetc(FILE *f) 
 {
+#ifdef RT_USING_POSIX
     char ch;
 
-#ifdef RT_USING_POSIX
     if (libc_stdio_read(&ch, 1) == 1)
         return ch;
 #endif
 
     return -1;
-}
-#endif
-
-#ifndef RT_USING_RTC
-time_t time(time_t *t)
-{
-	time_t time_now = 0;
-	
-	return time_now;
 }
 #endif
